@@ -4,7 +4,7 @@ description: This function is designed to manage and calculate the costs associa
 author: bgeneto
 author_url: https://github.com/bgeneto/open-webui-cost-tracker
 funding_url: https://github.com/open-webui
-version: 0.3.0
+version: 0.3.1
 license: MIT
 requirements: requests, tiktoken, cachetools, pydantic
 environment_variables:
@@ -392,9 +392,15 @@ class Filter:
 
         return "\n".join([process_line(line) for line in content.split("\n")])
 
-    def _get_model(self, body):
+    def _get_model(self, body, model_obj=None):
+        if model_obj and isinstance(model_obj, dict):
+            if "info" in model_obj and isinstance(model_obj["info"], dict) and "base_model_id" in model_obj["info"]:
+                base_model = self._sanitize_model_name(model_obj["info"]["base_model_id"])
+                return base_model
+
         if "model" in body:
-            return self._sanitize_model_name(body["model"])
+            model_id = self._sanitize_model_name(body["model"])
+            return model_id
         return None
 
     async def inlet(
@@ -421,6 +427,9 @@ class Filter:
                 },
             }
         )
+
+        # Store model info for later use in outlet
+        self.model_info = __model__
 
         # add user email to payload in order to track costs
         if __user__:
@@ -456,7 +465,9 @@ class Filter:
             }
         )
 
-        model = self._get_model(body)
+        model_obj = __model__ if __model__ else self.model_info if hasattr(self, "model_info") else None
+        model = self._get_model(body, model_obj)
+
         enc = tiktoken.get_encoding("cl100k_base")
         output_tokens = len(enc.encode(get_last_assistant_message(body["messages"])))
 
